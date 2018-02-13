@@ -21,6 +21,17 @@ const (
 	Collision = "collision"
 )
 
+type MotorModes uint8
+
+// MotorModes required for SetRawMotorValues command
+const (
+	Off MotorModes = iota
+	Forward
+	Reverse
+	Brake
+	Ignore
+)
+
 type packet struct {
 	header   []uint8
 	body     []uint8
@@ -46,6 +57,8 @@ type SpheroDriver struct {
 // Adds the following API Commands:
 // 	"ConfigureLocator" - See SpheroDriver.ConfigureLocator
 // 	"Roll" - See SpheroDriver.Roll
+//	"Boost" - see SpheroDriver.Boost
+//	"SetRawMotorValues" - see SpheroDriver.SetRawMotorValues
 // 	"Stop" - See SpheroDriver.Stop
 // 	"GetRGB" - See SpheroDriver.GetRGB
 //	"ReadLocator" - See SpheroDriver.ReadLocator
@@ -80,6 +93,12 @@ func NewSpheroDriver(a *Adaptor) *SpheroDriver {
 		speed := uint8(params["speed"].(float64))
 		heading := uint16(params["heading"].(float64))
 		s.Roll(speed, heading)
+		return nil
+	})
+
+	s.AddCommand("Boost", func(params map[string]interface{}) interface{} {
+		state := params["enable"].(bool)
+		s.SetStabilization(state)
 		return nil
 	})
 
@@ -288,6 +307,23 @@ func (s *SpheroDriver) SetStabilization(on bool) {
 // Roll sends a roll command to the Sphero gives a speed and heading
 func (s *SpheroDriver) Roll(speed uint8, heading uint16) {
 	s.packetChannel <- s.craftPacket([]uint8{speed, uint8(heading >> 8), uint8(heading & 0xFF), 0x01}, 0x02, 0x30)
+}
+
+// Boost executes the boost macro from within the SSB which takes a
+// 1 byte parameter which is either 01h to begin boosting or 00h to stop.
+func (s *SpheroDriver) Boost(state bool) {
+	b := uint8(0x01)
+	if !state {
+		b = 0x00
+	}
+	s.packetChannel <- s.craftPacket([]uint8{b}, 0x02, 0x31)
+}
+
+// SetRawMotorValues allows you to take over one or both of the motor output values,
+// instead of having the stabilization system control them. Each motor (left and right)
+// requires a mode and a power value from 0-255
+func (s *SpheroDriver) SetRawMotorValues(lmode MotorModes, lpower uint8, rmode MotorModes, rpower uint8) {
+	s.packetChannel <- s.craftPacket([]uint8{uint8(lmode), lpower, uint8(rmode), rpower}, 0x02, 0x33)
 }
 
 // ConfigureLocator configures and enables the Locator
